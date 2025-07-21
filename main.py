@@ -48,3 +48,7 @@ async def upload(
         shutil.copyfileobj(transcript.file, f)
 
     return PlainTextResponse(f"Files uploaded successfully for session: {sessionId}")
+
+@app.get("/")
+def read_root():
+    return {"message": "FastAPI backend is live!"}
