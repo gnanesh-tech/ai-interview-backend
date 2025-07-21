@@ -1,5 +1,11 @@
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+
+
+
+
 from fastapi.responses import PlainTextResponse
 from datetime import datetime
 import os
@@ -52,3 +58,20 @@ async def upload(
 @app.get("/")
 def read_root():
     return {"message": "FastAPI backend is live!"}
+
+@app.get("/admin/uploads")
+def list_uploaded_sessions():
+    sessions = {}
+    for session_id in os.listdir(UPLOAD_DIR):
+        session_path = os.path.join(UPLOAD_DIR, session_id)
+        if os.path.isdir(session_path):
+            video_file = os.path.join(session_path, "interview_video.webm")
+            transcript_file = os.path.join(session_path, "interview_transcript.txt")
+            if os.path.exists(video_file) and os.path.exists(transcript_file):
+                sessions[session_id] = {
+                    "video": f"/uploads/{session_id}/interview_video.webm",
+                    "transcript": f"/uploads/{session_id}/interview_transcript.txt"
+                }
+
+    return JSONResponse(content=sessions)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
