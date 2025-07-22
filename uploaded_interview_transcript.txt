@@ -1,0 +1,15 @@
+AI: Tell me about yourself.
+Candidate: my name is Ganesh
+
+AI: What are your strengths and weaknesses?
+Candidate: my strengths are weaknesses
+
+AI: Why do you want to join our company?
+Candidate: I just want to join your company person
+
+AI: Describe a challenge you faced and how you handled it.
+Candidate: I faced nothing
+
+AI: Where do you see yourself in five years?
+Candidate: in a good position
+

@@ -2,28 +2,46 @@ from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
-import os
+from sqlmodel import SQLModel, Field, Session, create_engine, select
+from datetime import datetime
 import shutil
+import os
 
-# 1. Initialize FastAPI
+# --------- App & CORS Setup ---------
 app = FastAPI()
 
-# 2. CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 3. Set up upload directory
+# --------- Upload Directory ---------
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-# 4. Mount uploads directory as static files BEFORE routes
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
-# 5. Questions endpoint
+# --------- SQLite DB Setup ---------
+DATABASE_URL = "sqlite:///interviews.db"
+engine = create_engine(DATABASE_URL, echo=False)
+
+# --------- Interview Model ---------
+class Interview(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str
+    email: str
+    sessionId: str
+    video_path: str
+    transcript_path: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+# --------- Create Tables on Startup ---------
+@app.on_event("startup")
+def on_startup():
+    SQLModel.metadata.create_all(engine)
+
+# --------- Interview Questions ---------
 @app.get("/questions")
 def get_questions():
     return [
@@ -34,43 +52,60 @@ def get_questions():
         "Where do you see yourself in five years?"
     ]
 
-# 6. Upload endpoint
+# --------- Upload Endpoint ---------
 @app.post("/upload")
 async def upload(
     video: UploadFile = File(...),
     transcript: UploadFile = File(...),
-    sessionId: str = Form(...)
+    sessionId: str = Form(...),
+    name: str = Form(...),
+    email: str = Form(...)
 ):
     session_dir = os.path.join(UPLOAD_DIR, sessionId)
     os.makedirs(session_dir, exist_ok=True)
 
-    # Save video
-    with open(os.path.join(session_dir, "interview_video.webm"), "wb") as f:
+    # Save video file
+    video_path = os.path.join(session_dir, "interview_video.webm")
+    with open(video_path, "wb") as f:
         shutil.copyfileobj(video.file, f)
 
-    # Save transcript
-    with open(os.path.join(session_dir, "interview_transcript.txt"), "wb") as f:
+    # Save transcript file
+    transcript_path = os.path.join(session_dir, "interview_transcript.txt")
+    with open(transcript_path, "wb") as f:
         shutil.copyfileobj(transcript.file, f)
+
+    # Save to SQLite DB
+    interview = Interview(
+        name=name,
+        email=email,
+        sessionId=sessionId,
+        video_path=f"/uploads/{sessionId}/interview_video.webm",
+        transcript_path=f"/uploads/{sessionId}/interview_transcript.txt"
+    )
+
+    with Session(engine) as session:
+        session.add(interview)
+        session.commit()
 
     return PlainTextResponse(f"Files uploaded successfully for session: {sessionId}")
 
-# 7. Root route
-@app.get("/")
-def read_root():
-    return {"message": "FastAPI backend is live!"}
-
-# 8. Admin uploads listing
+# --------- Admin Uploads Viewer ---------
 @app.get("/admin/uploads")
 def list_uploaded_sessions():
-    sessions = {}
-    for session_id in os.listdir(UPLOAD_DIR):
-        session_path = os.path.join(UPLOAD_DIR, session_id)
-        if os.path.isdir(session_path):
-            video_file = os.path.join(session_path, "interview_video.webm")
-            transcript_file = os.path.join(session_path, "interview_transcript.txt")
-            if os.path.exists(video_file) and os.path.exists(transcript_file):
-                sessions[session_id] = {
-                    "video": f"/uploads/{session_id}/interview_video.webm",
-                    "transcript": f"/uploads/{session_id}/interview_transcript.txt"
-                }
-    return JSONResponse(content=sessions)
+    with Session(engine) as session:
+        interviews = session.exec(select(Interview)).all()
+        data = {
+            i.sessionId: {
+                "name": i.name,
+                "email": i.email,
+                "video": i.video_path,
+                "transcript": i.transcript_path,
+                "timestamp": i.timestamp.isoformat()
+            } for i in interviews
+        }
+    return JSONResponse(content=data)
+
+# --------- Root Endpoint ---------
+@app.get("/")
+def read_root():
+    return {"message": "FastAPI backend with SQLite is live!"}
