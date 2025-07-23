@@ -97,12 +97,20 @@ async def upload_chunk(
     session_dir = os.path.join(UPLOAD_DIR, sessionId)
     os.makedirs(session_dir, exist_ok=True)
 
-    
-    chunk_path = os.path.join(session_dir, f"{datetime.utcnow().timestamp()}_chunk.webm")
+    # Count existing chunks to give next chunk a number
+    existing_chunks = sorted([
+        f for f in os.listdir(session_dir)
+        if f.endswith("_chunk.webm")
+    ])
+    chunk_index = len(existing_chunks) + 1
+    chunk_filename = f"{chunk_index:04d}_chunk.webm"
+
+    chunk_path = os.path.join(session_dir, chunk_filename)
     with open(chunk_path, "wb") as f:
         shutil.copyfileobj(chunk.file, f)
 
     return PlainTextResponse("Chunk stored.")
+
 
 
 @app.get("/admin/uploads")
@@ -123,19 +131,18 @@ def list_uploaded_sessions(request: Request):
             video_file = i.video_path
 
             if not os.path.exists(full_video) and partial_chunks:
-                # Use the first available chunk for now
-                first_chunk = partial_chunks[0]
-                video_file = f"/uploads/{i.sessionId}/{first_chunk}"
+    # Merge chunks into a temporary playable file
+                merged_filename = "partial_interview.webm"
+                merged_path = os.path.join(session_dir, merged_filename)
 
-            data[i.sessionId] = {
-                "name": i.name,
-                "email": i.email,
-                "video": str(request.base_url) + video_file.lstrip("/"),
-                "transcript": str(request.base_url) + i.transcript_path.lstrip("/") if i.transcript_path else "N/A",
-                "timestamp": i.timestamp.isoformat()
-            }
+                with open(merged_path, "wb") as outfile:
+                    for chunk_name in partial_chunks:
+                        chunk_path = os.path.join(session_dir, chunk_name)
+                        with open(chunk_path, "rb") as infile:
+                            shutil.copyfileobj(infile, outfile)
 
-        return JSONResponse(content=data)
+                video_file = f"/uploads/{i.sessionId}/{merged_filename}"
+
 
 
 
