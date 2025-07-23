@@ -109,3 +109,4 @@ def list_uploaded_sessions():
 @app.get("/")
 def read_root():
     return {"message": "FastAPI backend with SQLite is live!"}
+
