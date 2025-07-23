@@ -97,12 +97,12 @@ async def upload_chunk(
     session_dir = os.path.join(UPLOAD_DIR, sessionId)
     os.makedirs(session_dir, exist_ok=True)
 
-    partial_video_path = os.path.join(session_dir, "partial_video.webm")
     
-    with open(partial_video_path, "ab") as f:
+    chunk_path = os.path.join(session_dir, f"{datetime.utcnow().timestamp()}_chunk.webm")
+    with open(chunk_path, "wb") as f:
         shutil.copyfileobj(chunk.file, f)
 
-    return PlainTextResponse("Chunk received.")
+    return PlainTextResponse("Chunk stored.")
 
 
 @app.get("/admin/uploads")
@@ -110,16 +110,22 @@ def list_uploaded_sessions(request: Request):
     with Session(engine) as session:
         interviews = session.exec(select(Interview)).all()
         data = {}
+
         for i in interviews:
-            # Default to full video
+            session_dir = os.path.join(UPLOAD_DIR, i.sessionId)
+            full_video = os.path.join(session_dir, "interview_video.webm")
+            partial_chunks = sorted([
+                f for f in os.listdir(session_dir)
+                if f.endswith("_chunk.webm")
+            ])
+
+            # Set default
             video_file = i.video_path
 
-            # Check if full video missing but partial exists
-            full_path = os.path.join(UPLOAD_DIR, i.sessionId, "interview_video.webm")
-            partial_path = os.path.join(UPLOAD_DIR, i.sessionId, "partial_video.webm")
-
-            if not os.path.exists(full_path) and os.path.exists(partial_path):
-                video_file = f"/uploads/{i.sessionId}/partial_video.webm"
+            if not os.path.exists(full_video) and partial_chunks:
+                # Use the first available chunk for now
+                first_chunk = partial_chunks[0]
+                video_file = f"/uploads/{i.sessionId}/{first_chunk}"
 
             data[i.sessionId] = {
                 "name": i.name,
@@ -128,6 +134,7 @@ def list_uploaded_sessions(request: Request):
                 "transcript": str(request.base_url) + i.transcript_path.lstrip("/") if i.transcript_path else "N/A",
                 "timestamp": i.timestamp.isoformat()
             }
+
         return JSONResponse(content=data)
 
 
