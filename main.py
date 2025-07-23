@@ -116,7 +116,7 @@ def read_root():
 MERGE_TIMEOUT = timedelta(minutes=2)
 
 scheduler = BackgroundScheduler()
-app = FastAPI()
+
 
 @app.on_event("startup")
 def on_startup():
@@ -146,6 +146,8 @@ def check_and_merge_stale():
                 merge_chunks(sessionId=session_id)
             except Exception:
                 pass  # swallow errors
+    
+
 
 
 
@@ -165,9 +167,10 @@ def merge_chunks(sessionId: str = Form(...)):
     file_list_path = os.path.join(session_dir, "file_list.txt")
     with open(file_list_path, "w") as f:
         for chunk in chunk_files:
-            f.write(f"file '{chunk}'\n")
+            f.write(f"file '{os.path.join(session_dir, chunk)}'\n")
+
     
-    os.chdir(session_dir)
+    
 
 
     # Step 3: Run ffmpeg to merge
@@ -181,6 +184,19 @@ def merge_chunks(sessionId: str = Form(...)):
         return JSONResponse(content={"error": "Failed to merge chunks"}, status_code=500)
 
     return JSONResponse(content={"message": "Chunks merged successfully", "merged_video": f"/uploads/{sessionId}/merged_interview.webm"})
+    # Update DB
+    with Session(engine) as session:
+        existing = session.exec(select(Interview).where(Interview.sessionId == sessionId)).first()
+        if not existing:
+            interview = Interview(
+            name="(AutoRecovered)",
+            email="(unknown)",
+            sessionId=sessionId,
+            video_path=f"/uploads/{sessionId}/merged_interview.webm",
+            transcript_path="(none)"
+        )
+        session.add(interview)
+        session.commit()
 
 
 @app.post("/upload_chunk")
