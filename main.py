@@ -127,11 +127,11 @@ def list_uploaded_sessions(request: Request):
                 if f.endswith("_chunk.webm")
             ])
 
-            # Set default
+            # Default to full video if available
             video_file = i.video_path
 
             if not os.path.exists(full_video) and partial_chunks:
-    # Merge chunks into a temporary playable file
+                # Merge chunks into a temporary playable file
                 merged_filename = "partial_interview.webm"
                 merged_path = os.path.join(session_dir, merged_filename)
 
@@ -142,6 +142,17 @@ def list_uploaded_sessions(request: Request):
                             shutil.copyfileobj(infile, outfile)
 
                 video_file = f"/uploads/{i.sessionId}/{merged_filename}"
+
+            data[i.sessionId] = {
+                "name": i.name,
+                "email": i.email,
+                "timestamp": i.timestamp.isoformat(),
+                "video": video_file,
+                "transcript": i.transcript_path
+            }
+
+    return JSONResponse(data)
+
 
 
 
