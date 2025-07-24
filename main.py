@@ -53,10 +53,12 @@ def get_questions():
     ]
 
 
+from typing import Optional
+
 @app.post("/upload")
 async def upload(
     video: UploadFile = File(...),
-    transcript: UploadFile = File(...),
+    transcript: Optional[UploadFile] = File(None),  
     sessionId: str = Form(...),
     name: str = Form(...),
     email: str = Form(...)
@@ -64,23 +66,25 @@ async def upload(
     session_dir = os.path.join(UPLOAD_DIR, sessionId)
     os.makedirs(session_dir, exist_ok=True)
 
-    
     video_path = os.path.join(session_dir, "interview_video.webm")
     with open(video_path, "wb") as f:
         shutil.copyfileobj(video.file, f)
 
-    
-    transcript_path = os.path.join(session_dir, "interview_transcript.txt")
-    with open(transcript_path, "wb") as f:
-        shutil.copyfileobj(transcript.file, f)
+    if transcript:
+        transcript_path = os.path.join(session_dir, "interview_transcript.txt")
+        with open(transcript_path, "wb") as f:
+            shutil.copyfileobj(transcript.file, f)
+        transcript_url = f"/uploads/{sessionId}/interview_transcript.txt"
+    else:
+        transcript_path = None
+        transcript_url = ""
 
-    
     interview = Interview(
         name=name,
         email=email,
         sessionId=sessionId,
         video_path=f"/uploads/{sessionId}/interview_video.webm",
-        transcript_path=f"/uploads/{sessionId}/interview_transcript.txt"
+        transcript_path=transcript_url
     )
 
     with Session(engine) as session:
