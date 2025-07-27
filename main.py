@@ -20,29 +20,22 @@ def recover_session(session_folder: str) -> bool:
     if not os.path.isdir(chunk_dir):
         return False  # No chunks = nothing to recover
 
-    chunk_files = sorted(os.listdir(chunk_dir), key=lambda f: os.path.getctime(os.path.join(chunk_dir, f)))
-
+    chunk_files = sorted(os.listdir(chunk_dir))
     if not chunk_files:
         return False  # No chunks = nothing to recover
 
 # proceed to combine chunks regardless of old .webm file
 
 
-    chunk_files = sorted(os.listdir(chunk_dir), key=lambda f: os.path.getctime(os.path.join(chunk_dir, f)))
-
+    chunk_files = sorted(os.listdir(chunk_dir))
     if not chunk_files:
         return False
 
     # Combine chunks
     with open(combined_path, "wb") as outfile:
         for fname in chunk_files:
-            path = os.path.join(chunk_dir, fname)
-            if os.path.getsize(path) < 100:  # Skip too-small or corrupted chunks
-                print(f"⚠️ Skipped small chunk: {fname}")
-                continue
-            with open(path, "rb") as infile:
+            with open(os.path.join(chunk_dir, fname), "rb") as infile:
                 shutil.copyfileobj(infile, outfile)
-
 
     # Clean up chunk files
     
@@ -181,7 +174,7 @@ async def upload(
 
     # Combine chunks if present
     if os.path.isdir(chunk_dir):
-        chunk_files = sorted(os.listdir(chunk_dir), key=lambda f: os.path.getctime(os.path.join(chunk_dir, f)))
+        chunk_files = sorted(os.listdir(chunk_dir))
         if chunk_files:
             with open(combined_path, "wb") as outfile:
                 for fname in chunk_files:
