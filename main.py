@@ -240,16 +240,28 @@ from fastapi import Form  # ensure this is imported
 @app.post("/upload-chunk")
 async def upload_chunk(
     sessionId: str = Form(...),
-    name: str = Form(...),     # ✅ added
-    email: str = Form(...),    # ✅ added
+    name: str = Form(...),
+    email: str = Form(...),
     chunk: UploadFile = File(...)
 ):
     chunk_dir = os.path.join(UPLOAD_DIR, sessionId, "chunks")
     os.makedirs(chunk_dir, exist_ok=True)
 
+    # ✅ ✅ ✅ Ensure meta.json exists for recovery
+    meta_path = os.path.join(UPLOAD_DIR, sessionId, "meta.json")
+    if not os.path.isfile(meta_path):
+        try:
+            os.makedirs(os.path.dirname(meta_path), exist_ok=True)
+            with open(meta_path, "w") as f:
+                json.dump({"sessionId": sessionId, "name": name, "email": email}, f)
+            print(f"📝 meta.json created in chunk upload for session {sessionId}")
+        except Exception as e:
+            print(f"⚠️ Failed to write meta.json: {e}")
+
     # Save chunk with timestamp to preserve order
     filename = f"{datetime.utcnow().isoformat().replace(':', '-')}.webm"
     chunk_path = os.path.join(chunk_dir, filename)
+    print(f"📦 Chunk received for session: {sessionId}")
 
     with open(chunk_path, "wb") as f:
         shutil.copyfileobj(chunk.file, f)
@@ -269,6 +281,7 @@ async def upload_chunk(
             session.commit()
 
     return PlainTextResponse("Chunk received.")
+
 
 @app.post("/recover-incomplete-sessions")
 def recover_incomplete_sessions():
