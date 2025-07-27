@@ -147,6 +147,8 @@ async def upload_chunk(
     with open(chunk_path, "wb") as f:
         shutil.copyfileobj(chunk.file, f)
 
+    print(f"Received chunk {index} for session {sessionId}")
+
     
     with open(os.path.join(session_dir, "last_modified.txt"), "w") as f:
         f.write(datetime.utcnow().isoformat())
@@ -155,6 +157,7 @@ async def upload_chunk(
 
 @app.post("/finalize-session")
 def finalize_session(sessionId: str = Form(...), name: str = Form(...), email: str = Form(...)):
+    print(f"Finalizing session: {sessionId}")
     session_dir = os.path.join(UPLOAD_DIR, sessionId)
     chunks_dir = os.path.join(session_dir, "chunks")
     output_video = os.path.join(session_dir, "interview_video.webm")
@@ -165,8 +168,13 @@ def finalize_session(sessionId: str = Form(...), name: str = Form(...), email: s
 
         with open(output_video, "wb") as out:
             for filename in chunk_files:
-                with open(os.path.join(chunks_dir, filename), "rb") as f:
-                    shutil.copyfileobj(f, out)
+                try:
+                    with open(os.path.join(chunks_dir, filename), "rb") as f:
+                        shutil.copyfileobj(f, out)
+                except Exception as e:
+                    print(f" Error reading {filename}: {e}")
+                    continue
+
 
     
     with Session(engine) as session:
@@ -174,7 +182,9 @@ def finalize_session(sessionId: str = Form(...), name: str = Form(...), email: s
             existing = session.exec(select(Interview).where(Interview.sessionId == sessionId)).first()
             if existing:
                 existing.video_path = f"/uploads/{sessionId}/interview_video.webm"
-                existing.transcript_path = existing.transcript_path or ""  # keep transcript if already uploaded
+                if not existing.transcript_path:
+                    existing.transcript_path = ""
+
                 session.add(existing)
             else:
                 interview = Interview(
@@ -243,7 +253,7 @@ def finalize_stale_sessions():
                                 )
                             db.add(interview)
                             db.commit()
-                            print(f" Finalized stale session: {session_id}")
+                            print(f"Auto-finalized stale session: {session_id}")
 
 
 
