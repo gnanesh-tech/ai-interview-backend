@@ -14,8 +14,15 @@ def recover_session(session_folder: str) -> bool:
     combined_path = os.path.join(session_dir, "combined_interview_video.webm")
     full_video_path = os.path.join(session_dir, "interview_video.webm")
 
-    if not (os.path.isdir(chunk_dir) and not os.path.isfile(combined_path) and not os.path.isfile(full_video_path)):
-        return False
+    if not os.path.isdir(chunk_dir):
+        return False  # No chunks = nothing to recover
+
+    chunk_files = sorted(os.listdir(chunk_dir))
+    if not chunk_files:
+        return False  # No chunks = nothing to recover
+
+# proceed to combine chunks regardless of old .webm file
+
 
     chunk_files = sorted(os.listdir(chunk_dir))
     if not chunk_files:
