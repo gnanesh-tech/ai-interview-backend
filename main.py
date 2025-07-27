@@ -1,10 +1,13 @@
-from fastapi import FastAPI, File, UploadFile, Form
+from fastapi import FastAPI, File, UploadFile, Form , Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from sqlmodel import SQLModel, Field, Session, create_engine, select
 from datetime import datetime
 import shutil
+import threading
+import time
+import glob
 import json
 import os
 
@@ -35,7 +38,7 @@ def recover_session(session_folder: str) -> bool:
                 shutil.copyfileobj(infile, outfile)
 
     # Clean up chunk files
-    import glob
+    
     for f in glob.glob(os.path.join(chunk_dir, "*.webm")):
         os.remove(f)
     os.rmdir(chunk_dir)
@@ -111,12 +114,13 @@ class Interview(SQLModel, table=True):
     transcript_path: str
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
-@app.post("/start-session")
+@app.post("/start-session", tags=["Session"])
 async def start_session(
     sessionId: str = Form(...),
     name: str = Form(...),
     email: str = Form(...)
 ):
+    
     meta_path = os.path.join(UPLOAD_DIR, sessionId, "meta.json")
     os.makedirs(os.path.dirname(meta_path), exist_ok=True)
 
@@ -132,7 +136,7 @@ def on_startup():
     SQLModel.metadata.create_all(engine)
 
 
-@app.get("/questions")
+@app.get("/questions", tags=["Interview"])
 def get_questions():
     return [
         "Tell me about yourself.",
@@ -151,7 +155,7 @@ def recover_all_sessions():
 
 
 
-@app.post("/upload")
+@app.post("/upload", tags=["Final Upload"])
 async def upload(
     video: UploadFile = File(...),
     transcript: UploadFile = File(...),
@@ -177,7 +181,7 @@ async def upload(
                         shutil.copyfileobj(infile, outfile)
 
             # Clean up chunk files
-            import glob
+            
             for f in glob.glob(os.path.join(chunk_dir, "*.webm")):
                 os.remove(f)
             os.rmdir(chunk_dir)
@@ -213,7 +217,7 @@ async def upload(
     return PlainTextResponse(f"Files uploaded successfully for session: {sessionId}")
 
 
-@app.get("/admin/uploads")
+@app.get("/admin/uploads", tags=["Admin"])
 def list_uploaded_sessions():
     with Session(engine) as session:
         interviews = session.exec(select(Interview)).all()
@@ -233,11 +237,9 @@ def list_uploaded_sessions():
 def read_root():
     return {"message": "FastAPI backend with SQLite is live!"}
 
-from fastapi import Request
+ # ensure this is imported
 
-from fastapi import Form  # ensure this is imported
-
-@app.post("/upload-chunk")
+@app.post("/upload-chunk", tags=["Chunks"])
 async def upload_chunk(
     sessionId: str = Form(...),
     name: str = Form(...),
@@ -291,8 +293,7 @@ def recover_incomplete_sessions():
             recovered_count += 1
     return PlainTextResponse(f"Recovered {recovered_count} incomplete interview sessions.")
 
-import threading
-import time
+
 
 def schedule_recovery(interval=120):  # every 2 minutes 
     def run_and_reschedule():
@@ -308,6 +309,11 @@ schedule_recovery()
 def manual_recover():
     recover_all_sessions()
     return {"message": "Manual recovery complete ✅"}
+
+@app.get("/debug/routes")
+def debug_routes():
+    return [route.path for route in app.router.routes]
+
 
 
 
