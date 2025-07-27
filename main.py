@@ -61,7 +61,7 @@ from typing import Optional
 @app.post("/start-session")
 def start_session(sessionId: str = Form(...), name: str = Form(...), email: str = Form(...)):
     with Session(engine) as session:
-        # Check if already exists (to avoid duplicates)
+        
         existing = session.exec(select(Interview).where(Interview.sessionId == sessionId)).first()
         if existing:
             return PlainTextResponse("Session already initialized", status_code=200)
@@ -111,8 +111,10 @@ async def upload(
     )
 
     with Session(engine) as session:
-        session.add(interview)
-        session.commit()
+        existing = session.exec(select(Interview).where(Interview.sessionId == sessionId)).first()
+        if not existing:
+            session.add(interview)
+            session.commit()
 
     return PlainTextResponse(f"Files uploaded successfully for session: {sessionId}")
 
@@ -157,7 +159,7 @@ def finalize_session(sessionId: str = Form(...), name: str = Form(...), email: s
     chunks_dir = os.path.join(session_dir, "chunks")
     output_video = os.path.join(session_dir, "interview_video.webm")
 
-    # Merge chunks if video doesn't exist
+    
     if not os.path.exists(output_video):
         chunk_files = sorted([f for f in os.listdir(chunks_dir) if f.endswith(".webm")])
 
@@ -166,17 +168,25 @@ def finalize_session(sessionId: str = Form(...), name: str = Form(...), email: s
                 with open(os.path.join(chunks_dir, filename), "rb") as f:
                     shutil.copyfileobj(f, out)
 
-    # Add to SQLite
+    
     with Session(engine) as session:
-        interview = Interview(
-            name=name,
-            email=email,
-            sessionId=sessionId,
-            video_path=f"/uploads/{sessionId}/interview_video.webm",
-            transcript_path="",  # optional
+        with Session(engine) as session:
+            existing = session.exec(select(Interview).where(Interview.sessionId == sessionId)).first()
+            if existing:
+                existing.video_path = f"/uploads/{sessionId}/interview_video.webm"
+                existing.transcript_path = existing.transcript_path or ""  # keep transcript if already uploaded
+                session.add(existing)
+            else:
+                interview = Interview(
+                    name=name,
+                    email=email,
+                    sessionId=sessionId,
+                    video_path=f"/uploads/{sessionId}/interview_video.webm",
+                    transcript_path=""
         )
-        session.add(interview)
-        session.commit()
+                session.add(interview)
+            session.commit()
+
 
     return PlainTextResponse(f"Session {sessionId} finalized.")
 
@@ -233,6 +243,8 @@ def finalize_stale_sessions():
                                 )
                             db.add(interview)
                             db.commit()
+                            print(f" Finalized stale session: {session_id}")
+
 
 
     return {"message": "Checked and finalized stale sessions."}
@@ -255,7 +267,7 @@ def recover_partial_interviews():
         if not chunk_files:
             continue
 
-        # Merge chunks
+        
         with open(final_video_path, "wb") as out:
             for filename in chunk_files:
                 with open(os.path.join(chunks_dir, filename), "rb") as f:
@@ -302,7 +314,7 @@ def finalize_stale_sessions_logic():
         output_video_path = os.path.join(UPLOAD_DIR, session_id, "interview_video.webm")
 
         if os.path.exists(output_video_path):
-            continue  # already finalized
+            continue 
 
         if os.path.exists(last_modified_file):
             with open(last_modified_file, "r") as f:
