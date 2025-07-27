@@ -110,9 +110,10 @@ class Interview(SQLModel, table=True):
     name: str
     email: str
     sessionId: str
-    video_path: str
-    transcript_path: str
+    video_path: str | None = None     # ✅ allow NULL
+    transcript_path: str | None = None  # ✅ allow NULL
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+
 
 @app.post("/start-session", tags=["Session"])
 async def start_session(
