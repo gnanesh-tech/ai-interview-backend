@@ -18,36 +18,36 @@ def recover_session(session_folder: str) -> bool:
     full_video_path = os.path.join(session_dir, "interview_video.webm")
 
     if not os.path.isdir(chunk_dir):
-        return False  # No chunks = nothing to recover
+        return False  
 
     chunk_files = sorted(os.listdir(chunk_dir))
     if not chunk_files:
-        return False  # No chunks = nothing to recover
+        return False  
 
-# proceed to combine chunks regardless of old .webm file
+
 
 
     chunk_files = sorted(os.listdir(chunk_dir))
     if not chunk_files:
         return False
 
-    # Combine chunks
+    
     with open(combined_path, "wb") as outfile:
         for fname in chunk_files:
             with open(os.path.join(chunk_dir, fname), "rb") as infile:
                 shutil.copyfileobj(infile, outfile)
 
-    # Clean up chunk files
+    
     
     for f in glob.glob(os.path.join(chunk_dir, "*.webm")):
         os.remove(f)
     os.rmdir(chunk_dir)
 
-    # Database handling
+    
     with Session(engine) as db:
         interview = db.exec(select(Interview).where(Interview.sessionId == session_folder)).first()
 
-        # Try to recover from meta.json if DB record is missing
+        
         if not interview:
             meta_path = os.path.join(session_dir, "meta.json")
             if os.path.isfile(meta_path):
@@ -68,7 +68,7 @@ def recover_session(session_folder: str) -> bool:
                     print(f"⚠️ Failed to recover meta.json for {session_folder}: {e}")
                     return False
 
-        # Update paths
+        
         if interview:
             interview.video_path = f"/uploads/{session_folder}/combined_interview_video.webm"
             transcript_path = os.path.join(session_dir, "interview_transcript.txt")
@@ -110,8 +110,8 @@ class Interview(SQLModel, table=True):
     name: str
     email: str
     sessionId: str
-    video_path: str | None = None     # ✅ allow NULL
-    transcript_path: str | None = None  # ✅ allow NULL
+    video_path: str | None = None     
+    transcript_path: str | None = None  
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -167,12 +167,12 @@ async def upload(
     session_dir = os.path.join(UPLOAD_DIR, sessionId)
     os.makedirs(session_dir, exist_ok=True)
 
-    # Paths
+    
     raw_video_path = os.path.join(session_dir, "interview_video.webm")
     combined_path = os.path.join(session_dir, "combined_interview_video.webm")
     chunk_dir = os.path.join(session_dir, "chunks")
 
-    # Combine chunks if present
+    
     if os.path.isdir(chunk_dir):
         chunk_files = sorted(os.listdir(chunk_dir))
         if chunk_files:
@@ -181,28 +181,28 @@ async def upload(
                     with open(os.path.join(chunk_dir, fname), "rb") as infile:
                         shutil.copyfileobj(infile, outfile)
 
-            # Clean up chunk files
+            
             
             for f in glob.glob(os.path.join(chunk_dir, "*.webm")):
                 os.remove(f)
             os.rmdir(chunk_dir)
 
-    # Save uploaded full video (overwritten if not used)
+    
     with open(raw_video_path, "wb") as f:
         shutil.copyfileobj(video.file, f)
 
-    # Save transcript
+    
     transcript_path = os.path.join(session_dir, "interview_transcript.txt")
     with open(transcript_path, "wb") as f:
         shutil.copyfileobj(transcript.file, f)
 
-    # Determine which video to link
+    
     if os.path.isfile(combined_path):
         final_video_path = f"/uploads/{sessionId}/combined_interview_video.webm"
     else:
         final_video_path = f"/uploads/{sessionId}/interview_video.webm"
 
-    # Save to DB
+    
     interview = Interview(
         name=name,
         email=email,
@@ -238,7 +238,7 @@ def list_uploaded_sessions():
 def read_root():
     return {"message": "FastAPI backend with SQLite is live!"}
 
- # ensure this is imported
+ 
 
 @app.post("/upload-chunk", tags=["Chunks"])
 async def upload_chunk(
@@ -250,7 +250,7 @@ async def upload_chunk(
     chunk_dir = os.path.join(UPLOAD_DIR, sessionId, "chunks")
     os.makedirs(chunk_dir, exist_ok=True)
 
-    # ✅ ✅ ✅ Ensure meta.json exists for recovery
+    
     meta_path = os.path.join(UPLOAD_DIR, sessionId, "meta.json")
     if not os.path.isfile(meta_path):
         try:
@@ -261,7 +261,7 @@ async def upload_chunk(
         except Exception as e:
             print(f"⚠️ Failed to write meta.json: {e}")
 
-    # Save chunk with timestamp to preserve order
+    
     filename = f"{datetime.utcnow().isoformat().replace(':', '-')}.webm"
     chunk_path = os.path.join(chunk_dir, filename)
     print(f"📦 Chunk received for session: {sessionId}")
@@ -269,7 +269,7 @@ async def upload_chunk(
     with open(chunk_path, "wb") as f:
         shutil.copyfileobj(chunk.file, f)
 
-    # ✅ Create placeholder interview if it doesn't exist
+    
     with Session(engine) as session:
         existing = session.exec(select(Interview).where(Interview.sessionId == sessionId)).first()
         if not existing:
@@ -296,14 +296,14 @@ def recover_incomplete_sessions():
 
 
 
-def schedule_recovery(interval=120):  # every 2 minutes 
+def schedule_recovery(interval=120):  
     def run_and_reschedule():
         recover_all_sessions()
         threading.Timer(interval, run_and_reschedule).start()
 
     run_and_reschedule()
 
-# Start the scheduler when app boots
+
 schedule_recovery()
 
 @app.get("/admin/recover-now")
@@ -314,6 +314,23 @@ def manual_recover():
 @app.get("/debug/routes")
 def debug_routes():
     return [route.path for route in app.router.routes]
+
+@app.post("/mark-complete")
+async def mark_complete(request: Request):
+    data = await request.json()
+    session_id = data.get("sessionId")
+
+    if not session_id:
+        return PlainTextResponse("Session ID missing", status_code=400)
+
+    with Session(engine) as db:
+        interview = db.exec(select(Interview).where(Interview.sessionId == session_id)).first()
+        if interview:
+            print(f" Session {session_id} marked complete.")
+            return PlainTextResponse(f"Session {session_id} marked complete.")
+        else:
+            return PlainTextResponse(f"Session {session_id} not found.", status_code=404)
+
 
 
 
